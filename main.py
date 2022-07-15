@@ -1,12 +1,16 @@
 # Sorts = popularity release_date title
+import sys
 import os
 import pandas as pd
 import requests
+from datetime import datetime
+
 import lyricsgenius as lg
 
-API_KEY = ""
-LYRICS_PATH = 'lyrics4.csv'
+DB_NAME = 'lyrics-%s.csv'.format(datetime.now().strftime("%Y%m%d-%H%M%S"))
 IMAGES_FMT = './images/{}.png'
+ARTIST_FILE = 'artists.txt'
+
 
 
 def get_lyrics(genius, artist, song_limit=None):
@@ -40,25 +44,30 @@ def download_image(artist):
         handler.write(img_data)
 
 
+def get_db_kwargs(db_path):
+    # Find out if first write or not
+    if os.path.exists(db_path):
+        return {'mode': 'a', 'index': False, 'header': False}
+    else:
+        return {'index': False}
+
+
 def main():
     API_KEY = sys.argv[1]
 
-    # Find out if first write or not
-    if os.path.exists(LYRICS_PATH):
-        write_kwargs = {'mode': 'a', 'index': False, 'header': False}
-    else:
-        write_kwargs = {'index': False}
+    with open (ARTIST_FILE, 'r', encoding='utf-8') as f:
+        artists = f.read().splitlines()
+    print('Reading artists: %s' % ', '.join(artists))
 
     genius = lg.Genius(API_KEY, skip_non_songs=True, excluded_terms=["(Remix)", "(Live)"], remove_section_headers=True,
-                       verbose=False)
-    artists = ["רביד פלוטניק", "טונה", "טדי נגוסה", "ג'ימבו ג'יי", "איזי", "הצל", "זי קיי", "מיכאל כהן", "נורוז",
-               "סאבלינימל", "מיכאל סוויסה", "סטטיק", "שאנן סטריט", "דודו פארוק", "שקל", "פלד", "לוקץ'", "טל טירנגל",
-               "כליפי", "הדג נחש", "שאזאמאט", "אקו", "סימה נון", "קפה שחור חזק", "Shabak Samech"]
-    artists = ['Eminem']
+                       verbose=True)
+
     for artist in artists:
         lyrics = get_lyrics(genius, artist)
-        skills_pd = pd.json_normalize(lyrics)
-        skills_pd.to_csv(LYRICS_PATH, **write_kwargs)
+        lyrics_df = pd.json_normalize(lyrics)
+
+        write_kwargs = get_db_kwargs(DB_NAME)
+        lyrics_df.to_csv(DB_NAME, **write_kwargs)
 
 
 if __name__ == '__main__':
