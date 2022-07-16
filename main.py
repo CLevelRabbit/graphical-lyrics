@@ -7,10 +7,9 @@ from datetime import datetime
 
 import lyricsgenius as lg
 
-DB_NAME = 'lyrics-%s.csv'.format(datetime.now().strftime("%Y%m%d-%H%M%S"))
+DB_NAME = 'lyrics-{}.csv'.format(datetime.now().strftime("%Y%m%d-%H%M%S"))
 IMAGES_FMT = './images/{}.png'
 ARTIST_FILE = 'artists.txt'
-
 
 
 def get_lyrics(genius, artist, song_limit=None):
@@ -53,13 +52,15 @@ def get_db_kwargs(db_path):
 
 
 def main():
-    API_KEY = sys.argv[1]
+    api_key = sys.argv[1]
 
-    with open (ARTIST_FILE, 'r', encoding='utf-8') as f:
+    print('DB name is: %s' % DB_NAME)
+
+    with open(ARTIST_FILE, 'r', encoding='utf-8') as f:
         artists = f.read().splitlines()
     print('Reading artists: %s' % ', '.join(artists))
 
-    genius = lg.Genius(API_KEY, skip_non_songs=True, excluded_terms=["(Remix)", "(Live)"], remove_section_headers=True,
+    genius = lg.Genius(api_key, skip_non_songs=True, excluded_terms=["(Remix)", "(Live)"], remove_section_headers=True,
                        verbose=True)
 
     for artist in artists:
