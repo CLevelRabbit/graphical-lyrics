@@ -1,0 +1,7 @@
+# ignore ALL .log files
+*.log
+*.pyc
+*checkpoints*
+
+# ignore ALL files in ANY directory named temp
+temp/
