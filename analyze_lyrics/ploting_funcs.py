@@ -1,12 +1,15 @@
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
+import plotly.express as px
 from PIL import Image, ImageDraw
 from plotly.subplots import make_subplots
 import circlify
 
 from main import IMAGES_FMT
-from analyze_lyrics.generate_df import get_year_df
+from analyze_lyrics.generate_df import get_year_df, get_city_df, ISRAELI_CITIES
+
+EXCLUDED_CITIES = ['רחובות', 'אלעד']
 
 
 def get_img(artist, is_round=True):
@@ -347,11 +350,41 @@ def print_metric_bar_graph(totals_df, trait, title=None):
             dict(
                 source=get_img(row.artist),
                 xref="paper", yref="y",
-                x=(i+0.1)/cnt , y=row[trait] + size,
+                x=(i + 0.1) / cnt, y=row[trait] + size,
                 xanchor="left", yanchor="top",
                 layer="above",
                 sizing="contain",
                 sizex=1000000, sizey=size)
         )
     fig.update_layout(height=600, width=1000, title=title, yaxis_range=[0, tdf[trait].max() + size * 1.2])
+    return fig
+
+
+def print_top_cities(df, cities=ISRAELI_CITIES, num_of_cities=10, is_stacked=False):
+    city_df = get_city_df(df, cities=cities)
+    city_df = city_df.groupby(['city']).sum().sort_values(by='cnt', ascending=False).head(
+        num_of_cities).reset_index()
+    if is_stacked:
+        # Recalculate with only the top cities so it will be sorted. Should fix sometime
+        city_df = get_city_df(df, cities=city_df.city)
+        fig = px.bar(city_df, x="city", y="cnt", color="name")
+        fig.update_layout(height=650)
+    else:
+        fig = go.Figure(data=[go.Bar(x=city_df.city, y=city_df.cnt)])
+    return fig
+
+
+def print_cities_artists(df, cities=ISRAELI_CITIES, cities_to_exclude=EXCLUDED_CITIES, num_of_artists=5):
+    city_df = get_city_df(df, cities=cities)
+    city_df = city_df[~city_df.city.isin(cities_to_exclude)].copy()
+    city_df = city_df[city_df.cnt > 0]
+
+    # Get only top artists
+    top_city_artists = list(
+        city_df.groupby(['name']).sum().sort_values(by='cnt', ascending=False).head(num_of_artists).index)
+    city_df = city_df[city_df.name.isin(top_city_artists)]
+
+    fig = px.bar(city_df, x="name", y="cnt", color="city")
+    fig.update_xaxes(categoryorder='sum descending')
+    fig.update_layout(height=850)
     return fig
