@@ -7,9 +7,37 @@ from plotly.subplots import make_subplots
 import circlify
 
 from main import IMAGES_FMT
-from analyze_lyrics.generate_df import get_year_df, get_city_df, ISRAELI_CITIES
+from analyze_lyrics.generate_df import get_year_df, get_counter_df, find_numbers_nlp
 
 EXCLUDED_CITIES = ['רחובות', 'אלעד']
+ISRAELI_CITIES = ['אום אל פחם', 'אופקים', 'אור יהודה', 'אור עקיבא', 'אילת', 'אלעד', 'אריאל', 'אשדוד', 'אשקלון',
+                  'באקה אל גרביה', 'באר שבע', 'בית שאן', 'בית שמש', 'ביתר עילית', 'בני ברק', 'בת ים', 'גבעת שמואל',
+                  'גבעתיים', 'דימונה', 'הוד השרון', 'הרצלייה', 'חדרה', 'חולון', 'חיפה', 'טבריה', 'טייבה', 'טירה',
+                  'טירת כרמל', 'טמרה', 'יבנה', 'יהוד', 'יקנעם עילית', 'ירושלים', 'כפר יונה', 'כפר סבא', 'כפר קאסם',
+                  'כרמיאל', 'לוד', 'מגדל העמק', 'מודיעין מכבים רעות', 'מודיעין עילית', 'מעלה אדומים', 'מעלות תרשיחא',
+                  'נהרייה', 'נס ציונה', 'נצרת', 'נצרת עילית', 'נשר', 'נתיבות', 'נתניה', 'סחנין', 'עכו', 'עפולה',
+                  'עראבה',
+                  'ערד', 'פתח תקווה', 'צפת', 'קלנסווה', 'קריית אונו', 'קריית אתא', 'קריית ביאליק', 'קריית גת',
+                  'קריית ים',
+                  'קריית מוצקין', 'קריית מלאכי', 'קריית שמונה', 'ראש העין', 'ראשון לציון', 'רהט', 'רחובות', 'רמלה',
+                  'רמת גן', 'רמת השרון', 'רעננה', 'שדרות', 'שפרעם', 'תל אביב', 'יפו']
+CITY_REPLACEMENTS = [('ת"א', 'תל אביב'), ('קרית', 'קריית')]
+
+NUMBERS = [
+    ['0', 'אפס'],
+    ['1', 'אחת', 'אחד'],
+    ['2', 'שתיים', 'שניים'],
+    ['3', 'שלוש', 'שלושה'],
+    ['4', 'ארבע', 'ארבעה'],
+    ['5', 'חמש', 'חמישה'],
+    ['6', 'שש', 'שישה'],
+    ['7', 'שבע', 'שבעה'],
+    ['8', 'שמונה', 'שמונה'],
+    ['9', 'תשע', 'תשעה']
+]
+
+CITY_PREFIXES = 'ולשבמ'
+NUMBER_PREFIXES = 'הולשבמ'
 
 
 def get_img(artist, is_round=True):
@@ -334,6 +362,13 @@ def print_top_words_combo(df, size_of_combo, cnt, title=None, colors_dict={}):
 
 
 def print_metric_bar_graph(totals_df, trait, title=None):
+    """
+    a generic function the prints a bar graph of a totals column
+    @param totals_df: the totals_df (agg df)
+    @param trait: the column name to count
+    @param title: optional - title for the graph
+    @return: figure
+    """
     # Sort by the trait
     tdf = totals_df.sort_values(by=trait).iloc[::-1].reset_index()
 
@@ -361,21 +396,38 @@ def print_metric_bar_graph(totals_df, trait, title=None):
 
 
 def print_top_cities(df, cities=ISRAELI_CITIES, num_of_cities=10, is_stacked=False):
-    city_df = get_city_df(df, cities=cities)
+    """
+    Print the most mentioned israeli cities
+    @param df: the song df
+    @param cities: the list of cities
+    @param num_of_cities: number of cities to put in graph
+    @param is_stacked: if True - stacks each artist's part in the sum
+    @return: figure
+    """
+    city_df = get_counter_df(df, 'city', cities, CITY_PREFIXES)
     city_df = city_df.groupby(['city']).sum().sort_values(by='cnt', ascending=False).head(
         num_of_cities).reset_index()
     if is_stacked:
         # Recalculate with only the top cities so it will be sorted. Should fix sometime
-        city_df = get_city_df(df, cities=city_df.city)
-        fig = px.bar(city_df, x="city", y="cnt", color="name")
-        fig.update_layout(height=650)
+        city_df = get_counter_df(df, 'city', city_df.city, CITY_PREFIXES)
+        fig = px.bar(city_df, x="city", y="cnt", color="name", color_discrete_sequence=px.colors.qualitative.Alphabet)
+        fig.update_layout(height=650, width=1000)
     else:
         fig = go.Figure(data=[go.Bar(x=city_df.city, y=city_df.cnt)])
+        fig.update_layout(height=450, width=550)
     return fig
 
 
 def print_cities_artists(df, cities=ISRAELI_CITIES, cities_to_exclude=EXCLUDED_CITIES, num_of_artists=5):
-    city_df = get_city_df(df, cities=cities)
+    """
+    Print the artists that mentiones the most cities
+    @param df: the song df
+    @param cities: a list of cities
+    @param cities_to_exclude: cities not to count
+    @param num_of_artists: how many artists to count
+    @return: figure
+    """
+    city_df = get_counter_df(df, 'city', cities, CITY_PREFIXES, replacements=CITY_REPLACEMENTS)
     city_df = city_df[~city_df.city.isin(cities_to_exclude)].copy()
     city_df = city_df[city_df.cnt > 0]
 
@@ -388,3 +440,27 @@ def print_cities_artists(df, cities=ISRAELI_CITIES, cities_to_exclude=EXCLUDED_C
     fig.update_xaxes(categoryorder='sum descending')
     fig.update_layout(height=850)
     return fig
+
+
+def print_numbers(df, numbers=NUMBERS, is_ai=False):
+    """
+    Print the most mentioned numbers
+    @param df: the song df
+    @param numbers: a list of numbers
+    @return: figure
+    """
+    if not is_ai:
+        numbers_df = get_counter_df(df, 'number', numbers, NUMBER_PREFIXES)
+        numbers_df = numbers_df.groupby(['number']).sum().sort_values(by='number', ascending=True).reset_index()
+        fig = px.pie(numbers_df, values='cnt', names='number', labels='number')
+        fig.update_traces(textposition='inside', textinfo='percent+label')
+        return fig
+    else:
+        results = find_numbers_nlp(df)
+        numbers = [i[0] for i in results]
+        counts = [i[1] for i in results]
+        tdf = pd.DataFrame.from_dict({'number': numbers, 'cnt': counts})
+        fig = px.pie(tdf, values='cnt', names='number', labels='number')
+        fig.update_traces(textposition='inside', textinfo='percent+label')
+        return fig
+

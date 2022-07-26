@@ -2,6 +2,7 @@
 *.log
 *.pyc
 *checkpoints*
+*.jar
 
 # ignore ALL files in ANY directory named temp
 temp/

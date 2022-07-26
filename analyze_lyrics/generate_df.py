@@ -1,21 +1,11 @@
 import re
 import string
+import numerizer
 import pandas as pd
+from google_trans_new import google_translator
+from spacy import load
 
 ME_WORDS = ['אני', 'שלי', 'לי', 'עצמי', 'אותי', 'אנחנו', 'שלנו', 'לנו', 'עצמנו', 'אותנו']
-
-ISRAELI_CITIES = ['אום אל פחם', 'אופקים', 'אור יהודה', 'אור עקיבא', 'אילת', 'אלעד', 'אריאל', 'אשדוד', 'אשקלון',
-                  'באקה אל גרביה', 'באר שבע', 'בית שאן', 'בית שמש', 'ביתר עילית', 'בני ברק', 'בת ים', 'גבעת שמואל',
-                  'גבעתיים', 'דימונה', 'הוד השרון', 'הרצלייה', 'חדרה', 'חולון', 'חיפה', 'טבריה', 'טייבה', 'טירה',
-                  'טירת כרמל', 'טמרה', 'יבנה', 'יהוד', 'יקנעם עילית', 'ירושלים', 'כפר יונה', 'כפר סבא', 'כפר קאסם',
-                  'כרמיאל', 'לוד', 'מגדל העמק', 'מודיעין מכבים רעות', 'מודיעין עילית', 'מעלה אדומים', 'מעלות תרשיחא',
-                  'נהרייה', 'נס ציונה', 'נצרת', 'נצרת עילית', 'נשר', 'נתיבות', 'נתניה', 'סחנין', 'עכו', 'עפולה',
-                  'עראבה',
-                  'ערד', 'פתח תקווה', 'צפת', 'קלנסווה', 'קריית אונו', 'קריית אתא', 'קריית ביאליק', 'קריית גת',
-                  'קריית ים',
-                  'קריית מוצקין', 'קריית מלאכי', 'קריית שמונה', 'ראש העין', 'ראשון לציון', 'רהט', 'רחובות', 'רמלה',
-                  'רמת גן', 'רמת השרון', 'רעננה', 'שדרות', 'שפרעם', 'תל אביב', 'יפו']
-
 
 def get_clean_df(db_name):
     """ Get the df """
@@ -134,12 +124,61 @@ def get_year_df(df):
     return year_df
 
 
-def get_city_df(df, cities=ISRAELI_CITIES):
-    cdf = df[['name', 'title', 'lyrics_clean']].copy()
-    for city in cities:
-        cdf[city] = df.lyrics_clean.apply(lambda x: len(
-            re.findall(r'\b[ו/ל/ש/ב/מ]?{}\b'.format(city), x.replace('קרית', 'קריית').replace('ת"א', 'תל אביב'))))
+def get_counter_df(df, column_name, phrases, prefixes, replacements=None):
+    """
+    Create a df the counts for each artist the appearance of each phrase (convoluted but works, hopefully)
+    @param df: the song df
+    @param column_name: the column name of the counted data in the output df
+    @param phrases: a list (or list of lists) of the phrases to locate
+    @param prefixes: prefixes to check before the words, like "lamed"\"bet" or other prefix hebrew letters
+    @param replacements: a list of 2-tuples of src and dst to replace in the src lyrics
+    @return: a df the counts the appearance of each phrase for each artist
+    """
+    def replace_and_locate(lyrics):
+        """
+        an apply func that makes the replacements and locates the regex
+        """
+        if replacements:
+            for src, dst in replacements:
+                lyrics = lyrics.replace(src, dst)
+        return len(
+            re.findall('|'.join([r'\b[{}]?{}\b'.format(prefixes, sub_phrase) for sub_phrase in phrase]), lyrics))
 
-    city_df = cdf.groupby('name').sum().stack().reset_index()
-    city_df.columns = ['name', 'city', 'cnt']
-    return city_df
+    tdf = df[['name', 'title', 'lyrics_clean']].copy()
+    for phrase in phrases:
+        if type(phrase) is not list:
+            phrase = [phrase]
+        tdf[phrase[0]] = df.lyrics_clean.apply(replace_and_locate)
+
+    tdf = tdf.groupby('name').sum().stack().reset_index()
+    tdf.columns = ['name', column_name, 'cnt']
+    return tdf
+
+
+def find_numbers_nlp(df, max_num=1000000):
+    """
+    Translate songs to english, run NLP model and locate numbers.
+    @param df: the song df
+    @param max_num: the highest number to find
+    @return: returns a list of (number, count) tuples
+    """
+    totals = {}
+    # Load AI modules
+    translator = google_translator()
+    nlp = load('en_core_web_sm')  # or any other model
+    for song in df.lyrics_clean:
+        # Translate song
+        translate_text = translator.translate(song, lang_src='he', lang_tgt='en')
+        # Parse NLP of the song
+        doc = nlp(translate_text)
+        # Find all numbers
+        for text, option in doc._.numerize().items():
+            for match in re.findall(r'\d+', option):
+                match = int(match)
+                if match > max_num:
+                    continue
+                cnt = totals.get(match, 0)
+                totals[match] = cnt + 1
+
+    results = [(number, count) for number, count in totals.items()]
+    return results
